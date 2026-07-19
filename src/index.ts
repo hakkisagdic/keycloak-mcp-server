@@ -17,32 +17,54 @@ import { z } from "zod";
 
 const cfg = {
   baseUrl: process.env.KEYCLOAK_URL ?? "http://localhost:8081",
-  realmName: process.env.KEYCLOAK_REALM ?? "master",
+  // Realm the credentials authenticate against (master can administer every realm).
+  authRealm: process.env.KEYCLOAK_REALM ?? "master",
   clientId: process.env.KEYCLOAK_CLIENT_ID ?? "admin-cli",
   clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
-  username: process.env.KEYCLOAK_ADMIN_USER ?? "admin",
-  password: process.env.KEYCLOAK_ADMIN_PASSWORD ?? "admin",
+  username: process.env.KEYCLOAK_ADMIN_USER,
+  password: process.env.KEYCLOAK_ADMIN_PASSWORD,
 };
 
-const kc = new KcAdminClient({ baseUrl: cfg.baseUrl, realmName: cfg.realmName });
+// Require explicit credentials — never silently fall back to a default admin password.
+type Grant =
+  | { grantType: "client_credentials"; clientId: string; clientSecret: string }
+  | { grantType: "password"; clientId: string; username: string; password: string };
 
-/** (Re)authenticate before every call — tokens are short-lived; the client caches internally. */
-async function ensureAuth(): Promise<void> {
-  await kc.auth(
-    cfg.clientSecret
-      ? { grantType: "client_credentials", clientId: cfg.clientId, clientSecret: cfg.clientSecret }
-      : { grantType: "password", clientId: cfg.clientId, username: cfg.username, password: cfg.password },
+const credential: Grant | null = cfg.clientSecret
+  ? { grantType: "client_credentials", clientId: cfg.clientId, clientSecret: cfg.clientSecret }
+  : cfg.username && cfg.password
+    ? { grantType: "password", clientId: cfg.clientId, username: cfg.username, password: cfg.password }
+    : null;
+
+if (!credential) {
+  console.error(
+    "[keycloak-mcp] No admin credentials. Set KEYCLOAK_CLIENT_SECRET (service account) " +
+      "or KEYCLOAK_ADMIN_USER + KEYCLOAK_ADMIN_PASSWORD.",
   );
+  process.exit(1);
 }
 
-/** Run a callback with the client temporarily pointed at `realm`, then restore the default. */
-async function withRealm<T>(realm: string, fn: () => Promise<T>): Promise<T> {
+// Refuse to send admin credentials in the clear to a non-loopback host.
+const url = new URL(cfg.baseUrl);
+const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+if (url.protocol !== "https:" && !isLoopback) {
+  console.error(
+    `[keycloak-mcp] Refusing to send admin credentials over plaintext HTTP to ${url.host}. ` +
+      "Use https:// or a loopback host.",
+  );
+  process.exit(1);
+}
+
+/**
+ * Build a freshly-authenticated client for a single request. A per-call client keeps the
+ * realm target and token call-local, so concurrent tool invocations never race on shared
+ * mutable state. Auth happens against `authRealm`; operations target `realm`.
+ */
+async function connect(realm: string): Promise<KcAdminClient> {
+  const kc = new KcAdminClient({ baseUrl: cfg.baseUrl, realmName: cfg.authRealm });
+  await kc.auth(credential!);
   kc.setConfig({ realmName: realm });
-  try {
-    return await fn();
-  } finally {
-    kc.setConfig({ realmName: cfg.realmName });
-  }
+  return kc;
 }
 
 const ok = (data: unknown) => ({
@@ -52,7 +74,7 @@ const ok = (data: unknown) => ({
 const server = new McpServer({ name: "keycloak-mcp-server", version: "0.1.0" });
 
 server.tool("kc_list_realms", "List all realms (name + enabled flag).", {}, async () => {
-  await ensureAuth();
+  const kc = await connect(cfg.authRealm);
   const realms = await kc.realms.find();
   return ok(realms.map((r) => ({ realm: r.realm, enabled: r.enabled })));
 });
@@ -60,10 +82,10 @@ server.tool("kc_list_realms", "List all realms (name + enabled flag).", {}, asyn
 server.tool(
   "kc_list_clients",
   "List OAuth clients in a realm.",
-  { realm: z.string().describe("Realm name") },
+  { realm: z.string().min(1).describe("Realm name") },
   async ({ realm }) => {
-    await ensureAuth();
-    const clients = await withRealm(realm, () => kc.clients.find());
+    const kc = await connect(realm);
+    const clients = await kc.clients.find();
     return ok(
       clients.map((c) => ({
         id: c.id,
@@ -80,12 +102,12 @@ server.tool(
   "kc_list_users",
   "List users in a realm (paged).",
   {
-    realm: z.string().describe("Realm name"),
+    realm: z.string().min(1).describe("Realm name"),
     max: z.number().int().positive().max(200).optional().describe("Max rows (default 20)"),
   },
   async ({ realm, max }) => {
-    await ensureAuth();
-    const users = await withRealm(realm, () => kc.users.find({ max: max ?? 20 }));
+    const kc = await connect(realm);
+    const users = await kc.users.find({ max: max ?? 20 });
     return ok(
       users.map((u) => ({ id: u.id, username: u.username, email: u.email, enabled: u.enabled })),
     );
