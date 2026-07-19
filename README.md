@@ -41,14 +41,21 @@ claude mcp add keycloak node /absolute/path/to/keycloak-mcp-server/dist/index.js
 | Tool | Description |
 |---|---|
 | `kc_list_realms` | List all realms |
+| `kc_get_realm` | Get a realm's configuration summary |
 | `kc_list_clients` | List clients in a realm |
+| `kc_get_client` | Get a client by its clientId |
+| `kc_list_client_scopes` | List client scopes in a realm |
 | `kc_list_users` | List users in a realm |
+| `kc_get_user` | Get a user by id or exact username |
+| `kc_list_roles` | List realm roles |
+| `kc_list_groups` | List groups in a realm |
+| `kc_list_identity_providers` | List identity providers (SSO) in a realm |
 
 ## Roadmap
 
-Realms · Clients · Users · Roles · Groups · Identity Providers · Client Scopes ·
-Protocol Mappers · Sessions · Events · Organizations — read + create/update/delete,
-plus an optional Streamable HTTP transport for remote use.
+- **Writes:** create/update/delete for users, clients, roles, groups (with confirmation).
+- **More resources:** sessions, events, protocol mappers, organizations, role mappings.
+- **Transport:** optional Streamable HTTP for remote use (today: stdio).
 
 ## License
 
