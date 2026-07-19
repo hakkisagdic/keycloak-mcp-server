@@ -27,6 +27,7 @@ The server talks to the Keycloak Admin REST API. Provide credentials via environ
 | `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` | `admin` / `admin` | Password grant |
 | `KEYCLOAK_CLIENT_SECRET` | — | If set, uses a client-credentials (service account) grant instead |
 | `KEYCLOAK_MCP_READONLY` | — | Set `true`/`1` to refuse all write tools |
+| `KEYCLOAK_MCP_HTTP_PORT` | — | If set, serve remote Streamable HTTP at `:PORT/mcp` instead of stdio |
 
 ## Use with Claude Code
 

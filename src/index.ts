@@ -2,15 +2,14 @@
 /**
  * keycloak-mcp-server — administer Keycloak through the Model Context Protocol.
  *
- * Transport: stdio (spawned by the MCP client). Authenticates to the Keycloak Admin
- * REST API with either an admin username/password (admin-cli) or a service-account
- * client-credentials grant, all via environment variables. See .env.example.
- *
- * Tools: read (realms/clients/users/roles/groups/IDPs/client-scopes) + write
- * (create/enable/role-map/delete users). Writes refuse when KEYCLOAK_MCP_READONLY is set.
+ * Transport: stdio by default (spawned by the MCP client). Set KEYCLOAK_MCP_HTTP_PORT to run a
+ * remote, stateless Streamable HTTP server at /mcp instead. Authenticates to the Keycloak Admin
+ * REST API via env (admin-cli password or a service-account client-credentials grant).
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer } from "node:http";
 import { cfg, credential, isCredentialUrlSafe } from "./client.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerWriteTools } from "./write-tools.js";
@@ -33,9 +32,43 @@ if (!isCredentialUrlSafe(cfg.baseUrl)) {
   process.exit(1);
 }
 
-const server = new McpServer({ name: "keycloak-mcp-server", version: "0.3.0" });
-registerReadTools(server);
-registerWriteTools(server);
+function buildServer(): McpServer {
+  const server = new McpServer({ name: "keycloak-mcp-server", version: "0.4.0" });
+  registerReadTools(server);
+  registerWriteTools(server);
+  return server;
+}
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const httpPort = process.env.KEYCLOAK_MCP_HTTP_PORT;
+if (httpPort) {
+  // Remote, stateless Streamable HTTP: a fresh server+transport per request.
+  const httpServer = createServer(async (req, res) => {
+    if ((req.url ?? "").split("?")[0] !== "/mcp") {
+      res.writeHead(404).end();
+      return;
+    }
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const raw = Buffer.concat(chunks).toString();
+      const body = raw ? JSON.parse(raw) : undefined;
+
+      const server = buildServer();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, body);
+    } catch (err) {
+      if (!res.headersSent) res.writeHead(500).end(String(err));
+    }
+  });
+  httpServer.listen(Number(httpPort), () =>
+    console.error(`[keycloak-mcp] Streamable HTTP listening on :${httpPort}/mcp`),
+  );
+} else {
+  const transport = new StdioServerTransport();
+  await buildServer().connect(transport);
+}
