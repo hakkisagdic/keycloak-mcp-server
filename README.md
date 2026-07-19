@@ -55,7 +55,10 @@ claude mcp add keycloak node /absolute/path/to/keycloak-mcp-server/dist/index.js
 
 ### Write tools
 
-Refused when `KEYCLOAK_MCP_READONLY` is set; `kc_delete_user` is a dry-run unless `confirm=true`.
+All write tools are refused when `KEYCLOAK_MCP_READONLY` is set; every `kc_delete_*` is a dry-run
+unless `confirm=true`.
+
+**Users**
 
 | Tool | Description |
 |---|---|
@@ -63,13 +66,26 @@ Refused when `KEYCLOAK_MCP_READONLY` is set; `kc_delete_user` is a dry-run unles
 | `kc_set_user_enabled` | Enable/disable a user |
 | `kc_assign_realm_role` | Assign a realm role to a user |
 | `kc_remove_realm_role` | Remove a realm role from a user |
+| `kc_add_user_to_group` | Add a user to a group |
 | `kc_delete_user` | Delete a user (dry-run unless `confirm=true`) |
+
+**Clients, roles, groups & client scopes**
+
+| Tool | Description |
+|---|---|
+| `kc_create_client` | Create an OIDC client (flows/redirects configurable) |
+| `kc_delete_client` | Delete a client by clientId (dry-run unless `confirm=true`) |
+| `kc_create_realm_role` | Create a realm role |
+| `kc_delete_realm_role` | Delete a realm role by name (dry-run unless `confirm=true`) |
+| `kc_create_group` | Create a group |
+| `kc_delete_group` | Delete a group by id (dry-run unless `confirm=true`) |
+| `kc_create_client_scope` | Create a client scope |
+| `kc_delete_client_scope` | Delete a client scope by id (dry-run unless `confirm=true`) |
 
 ## Roadmap
 
-- **More writes:** clients, roles, groups, client scopes; reset-password flows.
 - **More resources:** sessions, events, protocol mappers, organizations.
-- **Transport:** optional Streamable HTTP for remote use (today: stdio).
+- **Passwords:** credential/reset flows and BCrypt hash-import for app migrations.
 
 ## License
 

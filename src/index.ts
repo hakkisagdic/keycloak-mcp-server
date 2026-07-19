@@ -13,6 +13,7 @@ import { createServer } from "node:http";
 import { cfg, credential, isCredentialUrlSafe } from "./client.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerWriteTools } from "./write-tools.js";
+import { registerAdminWriteTools } from "./admin-write-tools.js";
 
 // Require explicit credentials — never silently fall back to a default admin password.
 if (!credential) {
@@ -33,9 +34,10 @@ if (!isCredentialUrlSafe(cfg.baseUrl)) {
 }
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: "keycloak-mcp-server", version: "0.4.0" });
+  const server = new McpServer({ name: "keycloak-mcp-server", version: "0.5.0" });
   registerReadTools(server);
   registerWriteTools(server);
+  registerAdminWriteTools(server);
   return server;
 }
 
