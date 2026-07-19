@@ -26,6 +26,7 @@ The server talks to the Keycloak Admin REST API. Provide credentials via environ
 | `KEYCLOAK_CLIENT_ID` | `admin-cli` | Client used for the grant |
 | `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` | `admin` / `admin` | Password grant |
 | `KEYCLOAK_CLIENT_SECRET` | — | If set, uses a client-credentials (service account) grant instead |
+| `KEYCLOAK_MCP_READONLY` | — | Set `true`/`1` to refuse all write tools |
 
 ## Use with Claude Code
 
@@ -51,10 +52,22 @@ claude mcp add keycloak node /absolute/path/to/keycloak-mcp-server/dist/index.js
 | `kc_list_groups` | List groups in a realm |
 | `kc_list_identity_providers` | List identity providers (SSO) in a realm |
 
+### Write tools
+
+Refused when `KEYCLOAK_MCP_READONLY` is set; `kc_delete_user` is a dry-run unless `confirm=true`.
+
+| Tool | Description |
+|---|---|
+| `kc_create_user` | Create a user (optionally set an initial password) |
+| `kc_set_user_enabled` | Enable/disable a user |
+| `kc_assign_realm_role` | Assign a realm role to a user |
+| `kc_remove_realm_role` | Remove a realm role from a user |
+| `kc_delete_user` | Delete a user (dry-run unless `confirm=true`) |
+
 ## Roadmap
 
-- **Writes:** create/update/delete for users, clients, roles, groups (with confirmation).
-- **More resources:** sessions, events, protocol mappers, organizations, role mappings.
+- **More writes:** clients, roles, groups, client scopes; reset-password flows.
+- **More resources:** sessions, events, protocol mappers, organizations.
 - **Transport:** optional Streamable HTTP for remote use (today: stdio).
 
 ## License
