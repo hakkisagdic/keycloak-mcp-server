@@ -11,7 +11,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { cfg, credential } from "./client.js";
+import { cfg, credential, isCredentialUrlSafe } from "./client.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerWriteTools } from "./write-tools.js";
 
@@ -25,11 +25,9 @@ if (!credential) {
 }
 
 // Refuse to send admin credentials in the clear to a non-loopback host.
-const url = new URL(cfg.baseUrl);
-const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-if (url.protocol !== "https:" && !isLoopback) {
+if (!isCredentialUrlSafe(cfg.baseUrl)) {
   console.error(
-    `[keycloak-mcp] Refusing to send admin credentials over plaintext HTTP to ${url.host}. ` +
+    `[keycloak-mcp] Refusing to send admin credentials over plaintext HTTP to ${cfg.baseUrl}. ` +
       "Use https:// or a loopback host.",
   );
   process.exit(1);

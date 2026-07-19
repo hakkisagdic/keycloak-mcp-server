@@ -1,33 +1,49 @@
 import KcAdminClient from "@keycloak/keycloak-admin-client";
 import { z } from "zod";
 
-export const cfg = {
-  baseUrl: process.env.KEYCLOAK_URL ?? "http://localhost:8081",
-  // Realm the credentials authenticate against (master can administer every realm).
-  authRealm: process.env.KEYCLOAK_REALM ?? "master",
-  clientId: process.env.KEYCLOAK_CLIENT_ID ?? "admin-cli",
-  clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
-  username: process.env.KEYCLOAK_ADMIN_USER,
-  password: process.env.KEYCLOAK_ADMIN_PASSWORD,
-  // When true, all write tools refuse. Set KEYCLOAK_MCP_READONLY=true|1.
-  readOnly: ["1", "true", "yes"].includes((process.env.KEYCLOAK_MCP_READONLY ?? "").toLowerCase()),
-};
-
-// Require explicit credentials — never silently fall back to a default admin password.
 export type Grant =
   | { grantType: "client_credentials"; clientId: string; clientSecret: string }
   | { grantType: "password"; clientId: string; username: string; password: string };
 
-export const credential: Grant | null = cfg.clientSecret
-  ? { grantType: "client_credentials", clientId: cfg.clientId, clientSecret: cfg.clientSecret }
-  : cfg.username && cfg.password
-    ? { grantType: "password", clientId: cfg.clientId, username: cfg.username, password: cfg.password }
-    : null;
+type Env = Record<string, string | undefined>;
+
+/** Resolve the admin grant from env — client-credentials wins, else password, else null. */
+export function resolveCredential(env: Env): Grant | null {
+  const clientId = env.KEYCLOAK_CLIENT_ID ?? "admin-cli";
+  if (env.KEYCLOAK_CLIENT_SECRET) {
+    return { grantType: "client_credentials", clientId, clientSecret: env.KEYCLOAK_CLIENT_SECRET };
+  }
+  if (env.KEYCLOAK_ADMIN_USER && env.KEYCLOAK_ADMIN_PASSWORD) {
+    return { grantType: "password", clientId, username: env.KEYCLOAK_ADMIN_USER, password: env.KEYCLOAK_ADMIN_PASSWORD };
+  }
+  return null;
+}
+
+/** True if credentials may be sent to this URL (https, or a loopback host over http). */
+export function isCredentialUrlSafe(baseUrl: string): boolean {
+  const url = new URL(baseUrl);
+  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  return url.protocol === "https:" || isLoopback;
+}
+
+/** Parse the read-only flag from env. */
+export function readOnlyFromEnv(env: Env): boolean {
+  return ["1", "true", "yes"].includes((env.KEYCLOAK_MCP_READONLY ?? "").toLowerCase());
+}
+
+export const cfg = {
+  baseUrl: process.env.KEYCLOAK_URL ?? "http://localhost:8081",
+  // Realm the credentials authenticate against (master can administer every realm).
+  authRealm: process.env.KEYCLOAK_REALM ?? "master",
+  readOnly: readOnlyFromEnv(process.env),
+};
+
+export const credential: Grant | null = resolveCredential(process.env);
 
 /**
- * Build a freshly-authenticated client for a single request. A per-call client keeps the
- * realm target and token call-local, so concurrent tool invocations never race on shared
- * mutable state. Auth happens against `authRealm`; operations target `realm`.
+ * Build a freshly-authenticated client for a single request. A per-call client keeps the realm
+ * target and token call-local, so concurrent tool invocations never race on shared mutable state.
+ * Auth happens against `authRealm`; operations target `realm`.
  */
 export async function connect(realm: string): Promise<KcAdminClient> {
   const kc = new KcAdminClient({ baseUrl: cfg.baseUrl, realmName: cfg.authRealm });
