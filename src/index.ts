@@ -14,6 +14,16 @@ import { cfg, credential, isCredentialUrlSafe } from "./client.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerWriteTools } from "./write-tools.js";
 import { registerAdminWriteTools } from "./admin-write-tools.js";
+import { registerUserExtraTools } from "./users-extra-tools.js";
+import { registerClientExtraTools } from "./clients-extra-tools.js";
+import { registerRealmTools } from "./realm-tools.js";
+import { registerRoleExtraTools } from "./roles-extra-tools.js";
+import { registerGroupExtraTools } from "./groups-extra-tools.js";
+import { registerClientScopeExtraTools } from "./client-scopes-extra-tools.js";
+import { registerIdpTools } from "./idp-tools.js";
+import { registerSessionsEventsTools } from "./sessions-events-tools.js";
+import { registerAuthnTools } from "./authn-tools.js";
+import { registerOrgComponentTools } from "./org-components-tools.js";
 
 // Require explicit credentials — never silently fall back to a default admin password.
 if (!credential) {
@@ -34,10 +44,20 @@ if (!isCredentialUrlSafe(cfg.baseUrl)) {
 }
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: "keycloak-mcp-server", version: "0.5.0" });
+  const server = new McpServer({ name: "keycloak-mcp-server", version: "0.6.0" });
   registerReadTools(server);
   registerWriteTools(server);
   registerAdminWriteTools(server);
+  registerUserExtraTools(server);
+  registerClientExtraTools(server);
+  registerRealmTools(server);
+  registerRoleExtraTools(server);
+  registerGroupExtraTools(server);
+  registerClientScopeExtraTools(server);
+  registerIdpTools(server);
+  registerSessionsEventsTools(server);
+  registerAuthnTools(server);
+  registerOrgComponentTools(server);
   return server;
 }
 
