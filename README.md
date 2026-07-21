@@ -27,7 +27,25 @@ The server talks to the Keycloak Admin REST API. Provide credentials via environ
 | `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` | `admin` / `admin` | Password grant |
 | `KEYCLOAK_CLIENT_SECRET` | — | If set, uses a client-credentials (service account) grant instead |
 | `KEYCLOAK_MCP_READONLY` | — | Set `true`/`1` to refuse all write tools |
+| `KEYCLOAK_MCP_TOOL_GROUPS` | — | Comma-separated allowlist to register only some tool groups (default: all). Groups: `reads, users, clients, core-writes, realms, roles, groups, scopes, idps, sessions, authn, orgs, ai`. Shrinks the loaded surface while every registered tool stays typed + individually permission-gated |
 | `KEYCLOAK_MCP_HTTP_PORT` | — | If set, serve remote Streamable HTTP at `:PORT/mcp` instead of stdio |
+
+### Remote (HTTP) mode — auth
+
+With `KEYCLOAK_MCP_HTTP_PORT` the server runs a stateless Streamable HTTP endpoint at `/mcp`, gated
+by a bearer token. Pick a mode:
+
+| Variable | Notes |
+|---|---|
+| `KEYCLOAK_MCP_OIDC_ISSUER` | **OAuth2 mode (recommended).** Validates the caller's JWT against this issuer's JWKS — e.g. protect the server with the very Keycloak it administers. Serves RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`; unauthenticated requests get `401` + `WWW-Authenticate`. |
+| `KEYCLOAK_MCP_OIDC_JWKS_URI` | Optional JWKS override (defaults to `<issuer>/protocol/openid-connect/certs`) |
+| `KEYCLOAK_MCP_OIDC_AUDIENCE` | Optional expected `aud` |
+| `KEYCLOAK_MCP_REQUIRED_ROLE` | Optional realm role the caller must hold (`realm_access.roles`) |
+| `KEYCLOAK_MCP_BEARER_TOKEN` | **Static mode.** A shared secret compared in constant time — simple single-caller setups |
+| `KEYCLOAK_MCP_PUBLIC_URL` | The externally-visible base URL (used in the metadata document) |
+
+If neither an OIDC issuer nor a static token is set, HTTP mode **binds to `127.0.0.1` only** and
+refuses to expose an unauthenticated Keycloak admin endpoint on a public interface.
 
 ## Use with Claude Code
 
@@ -38,14 +56,47 @@ claude mcp add keycloak node /absolute/path/to/keycloak-mcp-server/dist/index.js
   --env KEYCLOAK_ADMIN_PASSWORD=admin
 ```
 
+## MCP surface
+
+Full MCP spec, not just tools:
+
+- **Tools** (113) — the complete Keycloak admin API (catalog below).
+- **Resources** — read-only state as context: `keycloak://realms`, `keycloak://server-info`, and the
+  templates `keycloak://realm/{realm}`, `.../clients`, `.../roles` (the `{realm}` variable
+  autocompletes from the live server).
+- **Prompts** — guided admin workflows: `audit_realm_security`, `diagnose_login_failures`,
+  `onboard_client`, `rotate_client_secret` (realm / clientId arguments autocomplete).
+- **Completion** — `completion/complete` for the prompt + resource-template arguments above.
+- **Logging** — the `logging` capability is advertised; `logging/setLevel` is honored and each tool
+  invocation is logged to the client at the requested level.
+- **Tool annotations** — every tool carries `readOnlyHint` / `destructiveHint` / `idempotentHint`, so
+  clients can render and gate reads vs. destructive writes differently.
+- **Resource subscriptions** — `resources/subscribe` is supported; a subscribed URI is polled and the
+  server emits `notifications/resources/updated` when its content changes.
+- **Sampling** — `kc_ai_review` asks the connected client's LLM to review a realm's security posture.
+- **Elicitation** — `kc_delete_realm_interactive` confirms with the user via `elicitation/create`
+  instead of a `confirm` flag. Both degrade gracefully if the client lacks the capability.
+
+### MCP spec coverage
+
+| Area | Status |
+|---|---|
+| JSON-RPC 2.0, lifecycle, capability negotiation, ping, cancellation | ✅ (SDK) |
+| Pagination, progress | ✅ (SDK) |
+| Tools · Resources · Prompts · Completion · Logging | ✅ |
+| Resource subscriptions (`subscribe` + `resources/updated`) | ✅ |
+| Sampling · Elicitation (client features the server uses) | ✅ |
+| Transports: stdio · Streamable HTTP | ✅ |
+| Authorization: OAuth2 Resource Server on HTTP (RFC 9728) | ✅ |
+
 ## Tools
 
-**111 tools** across the full Keycloak admin surface. All write tools are refused when
+**113 tools** across the full Keycloak admin surface. All write tools are refused when
 `KEYCLOAK_MCP_READONLY` is set; every destructive tool (delete/clear/logout/regenerate) is a
 **dry-run unless `confirm=true`**.
 
 <details>
-<summary>Full tool catalog (111)</summary>
+<summary>Full tool catalog (113)</summary>
 
 **Core reads** (10)
 
@@ -223,12 +274,19 @@ claude mcp add keycloak node /absolute/path/to/keycloak-mcp-server/dist/index.js
 | `kc_get_component` | Get one component by id, including its config. |
 | `kc_delete_component` | Delete a component by id (destructive). Dry-run unless confirm=true. |
 
+**Sampling & elicitation** (2)
+
+| Tool | Description |
+|---|---|
+| `kc_ai_review` | Ask the connected client's LLM to review a realm's security posture (MCP sampling). Read-only. |
+| `kc_delete_realm_interactive` | Delete a realm, confirming via MCP elicitation (asks the user directly — no confirm arg). Refused in read-only mode. |
+
 </details>
 
 ## Roadmap
 
-- **Remote auth:** the Streamable HTTP mode has no auth gate yet — put OAuth2/bearer in front before exposing it beyond localhost.
 - **Credential flows:** BCrypt hash-import for app migrations.
+- **Sampling / elicitation** for interactive, confirmation-gated write workflows.
 
 ## License
 
